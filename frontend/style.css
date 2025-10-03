@@ -1,0 +1,72 @@
+:root {
+    --primary-color: #007bff;
+    --light-gray: #f8f9fa;
+    --border-color: #dee2e6;
+}
+
+body, html {
+    height: 100%;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--light-gray);
+}
+
+.navbar-brand .h5 {
+    font-weight: 600;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 500;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease-in-out;
+}
+
+.navbar-nav .nav-link.active,
+.navbar-nav .nav-link:hover {
+    border-bottom-color: #ffffff;
+    color: #ffffff !important;
+}
+
+.card {
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.card-title {
+    font-weight: 600;
+    color: #343a40;
+}
+
+.form-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: .25rem;
+}
+
+.checkbox-container {
+    height: 100px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: .25rem;
+    background-color: #fff;
+    font-size: 0.9rem;
+}
+
+.table-responsive {
+    max-height: 400px;
+}
+
+.table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.table-danger, .table-danger > th, .table-danger > td {
+    background-color: #f8d7da;
+}
+.table-warning, .table-warning > th, .table-warning > td {
+    background-color: #ffeeba;
+}
