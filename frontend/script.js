@@ -1,37 +1,89 @@
 $(document).ready(function() {
-    const apiBaseUrl = 'http://192.168.1.10:3000'; 
+    const apiBaseUrl = 'http://100.88.78.68:3000'; 
 
     // --- Page Navigation Logic ---
     function showPage(pageId) {
-        $('#page-dashboard, #page-records, #page-demographics, #page-lab, #page-reports, #page-logbook').addClass('d-none');
+        $('#page-dashboard, #page-records, #page-demographics, #page-lab, #page-reports, #page-logbook, #page-medicine, #page-activity-log').addClass('d-none');
         $(`#${pageId}`).removeClass('d-none');
     }
 
-    $('#nav-dashboard').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-dashboard'); });
+    function fetchDashboardStats() {
+        $.get(`${apiBaseUrl}/api/dashboard-stats`, function(data) {
+            $('#stat-total-patients').text(data.totalPatients);
+            $('#stat-visits-month').text(data.visitsThisMonth);
+            $('#stat-low-stock').text(data.lowStockItems);
+        }).fail(() => {
+            console.error("Failed to load dashboard stats.");
+        });
+    }
+
+    $('#nav-dashboard').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-dashboard'); fetchDashboardStats(); });
     $('#nav-records').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-records'); fetchPatientRecords(); });
     $('#nav-demographics').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-demographics'); fetchDemographicsReport(); });
     $('#nav-lab').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-lab'); fetchLabRecords(); });
     $('#nav-logbook').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-logbook'); fetchLogbookEntries(); });
+    $('#nav-medicine').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-medicine'); fetchMedicines(); });
     $('#nav-reports').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-reports'); fetchCumulativeReport(); });
+    $('#nav-activity-log').on('click', function(e) { e.preventDefault(); $('.nav-link').removeClass('active'); $(this).addClass('active'); showPage('page-activity-log'); fetchActivityLog(); });
 
 
     // --- Patient Registration Logic ---
+    $('#program_type').on('change', function() {
+        const selectedProgram = $(this).val();
+        $('#anc-details-container').addClass('d-none');
+        $('#pnc-details-container').addClass('d-none');
+
+        if (selectedProgram === 'ANC') {
+            $('#anc-details-container').removeClass('d-none');
+        } else if (selectedProgram === 'PNC') {
+            $('#pnc-details-container').removeClass('d-none');
+        }
+    });
+
     $('#add-patient-form').on('submit', function(e) {
         e.preventDefault();
+        const programType = $('#program_type').val();
+        
         const newPatient = {
-            registration_date: $('#registration_date').val(), name: $('#name').val(), husband_father_name: $('#husband_father_name').val(), 
-            age: $('#age').val(), sex: $('#sex').val(), village_name: $('#village_name').val(), 
-            program_type: $('#program_type').val(), caste: $('#caste').val()
+            registration_date: $('#registration_date').val(),
+            name: $('#name').val(),
+            husband_father_name: $('#husband_father_name').val(), 
+            age: $('#age').val(),
+            sex: $('#sex').val(),
+            village_name: $('#village_name').val(), 
+            program_type: programType,
+            caste: $('#caste').val(),
+            bpl_status: $('#bpl_status').val()
         };
+
+        if (programType === 'ANC') {
+            newPatient.anc_details = { gpal: $('#anc_gpal').val(), albumin: $('#anc_albumin').val(), tt: $('#anc_tt').val(), fhr: $('#anc_fhr').val(), gestational_age: $('#anc_gestational_age').val(), fp: $('#anc_fp').val(), contact: $('#anc_contact').val(), remark: $('#anc_remark').val() };
+        } else if (programType === 'PNC') {
+            newPatient.pnc_details = { pnc_duration: $('#pnc_duration').val(), mother_weight: $('#pnc_mother_weight').val(), child_weight: $('#pnc_child_weight').val() };
+        }
+
         if (!newPatient.registration_date) { alert('Date of Visit is required.'); return; }
         if (!newPatient.village_name.trim()) { alert('Village name is required.'); return; }
+
         $.ajax({
             url: `${apiBaseUrl}/api/patients`, type: 'POST', contentType: 'application/json', data: JSON.stringify(newPatient),
-            success: function() {
+            success: function(response) {
                 alert('Patient added successfully!');
+                const addFollowUp = $('#add-follow-up-checkbox').is(':checked');
+                
                 $('#add-patient-form')[0].reset();
-                populateVillageFilter();
-                populateAllPatientDropdowns(); 
+                $('#anc-details-container').addClass('d-none');
+                $('#pnc-details-container').addClass('d-none');
+                populateVillageFilter(); 
+                
+                const newOption = `<option value="${response.id}">${response.name}</option>`;
+                $('#fu-patient-id').append(newOption);
+                $('#lab-patient-id').append(newOption);
+
+                if (addFollowUp) {
+                    $('#fu-patient-id').val(response.id);
+                    $('html, body').animate({ scrollTop: $("#add-follow-up-form").offset().top }, 500);
+                }
             },
             error: function() { alert('Error: Could not add patient.'); }
         });
@@ -43,7 +95,7 @@ $(document).ready(function() {
         const followUpData = {
             patient_id: $('#fu-patient-id').val(), follow_up_date: $('#fu-date').val(),
             pulse: $('#fu-pulse').val() || null, respiratory_rate: $('#fu-respiratory-rate').val() || null, temperature: $('#fu-temperature').val() || null,
-            blood_pressure: $('#fu-blood-pressure').val() || null, weight_kg: $('#fu-weight').val() || null, height_cm: $('#fu-height').val() || null,
+            blood_pressure: $('#fu-blood_pressure').val() || null, weight_kg: $('#fu-weight').val() || null, height_cm: $('#fu-height').val() || null,
             random_blood_sugar: $('#fu-rbs').val() || null, haemoglobin: $('#fu-hb').val() || null,
             known_case_of: $('#fu-kco').val() || null, history_of: $('#fu-ho').val() || null, complaint_of: $('#fu-co').val() || null,
             on_examination: $('#fu-oe').val() || null, treatment_advised: $('#fu-treatment').val() || null, medicine_prescribed: $('#fu-medicine').val() || null,
@@ -54,11 +106,441 @@ $(document).ready(function() {
         if (!followUpData.patient_id || !followUpData.follow_up_date) { alert('Please select a patient and a follow-up date.'); return; }
         $.ajax({
             url: `${apiBaseUrl}/api/followups`, type: 'POST', contentType: 'application/json', data: JSON.stringify(followUpData),
-            success: () => { alert('Follow-up saved!'); $('#add-follow-up-form')[0].reset(); },
-            error: () => alert('Error saving follow-up.')
+            success: () => { 
+                alert('Follow-up saved and medicine issued!'); 
+                $('#add-follow-up-form')[0].reset(); 
+                $('#fu-prescription-list').empty();
+                $('#fu-medicine').val('');
+                fetchMedicines(); 
+            },
+            error: (xhr) => alert('Error saving follow-up: ' + xhr.responseText)
+        });
+    });
+
+    // --- Patient Records Page & Details Modal Logic ---
+    function fetchPatientRecords() {
+        $('#records-table-container').html('<p class="text-muted text-center">Loading records...</p>');
+        
+        const searchTerm = $('#records-search-input').val();
+        const startDate = $('#records-start-date').val();
+        const endDate = $('#records-end-date').val();
+
+        const params = new URLSearchParams();
+        if (searchTerm) params.append('searchTerm', searchTerm);
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+
+        $.get(`${apiBaseUrl}/api/patient-records?${params.toString()}`, function(records) {
+            renderRecordsTable(records);
+        }).fail(() => {
+            $('#records-table-container').html('<p class="text-danger text-center">Failed to load patient records.</p>');
+        });
+    }
+
+    $('#records-filter-btn').on('click', fetchPatientRecords);
+
+    function renderRecordsTable(records) {
+        const container = $('#records-table-container');
+        if (records.length === 0) {
+            container.html('<p class="text-muted text-center">No patients found.</p>');
+            return;
+        }
+        const table = $('<table class="table table-hover table-sm"></table>');
+        table.html(`<thead class="thead-light"><tr><th>Patient Name</th><th>Village</th><th>Reg. Date</th><th>Last Follow-up</th><th>Actions</th></tr></thead><tbody></tbody>`);
+        const tbody = table.find('tbody');
+        records.forEach(row => {
+            tbody.append(`
+                <tr data-patient-id="${row.id}">
+                    <td><a href="#" class="patient-details-link" data-patient-id="${row.id}">${row.name}</a></td>
+                    <td>${row.village_name || 'N/A'}</td>
+                    <td>${row.registration_date}</td>
+                    <td>${row.last_follow_up || 'None'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info edit-patient-btn" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-danger delete-patient-btn" title="Delete"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>`);
+        });
+        container.html(table);
+    }
+
+    $('#records-table-container').on('click', '.patient-details-link', function(e) {
+        e.preventDefault();
+        const patientId = $(this).data('patient-id');
+        fetchAndShowPatientDetails(patientId);
+    });
+
+    function fetchAndShowPatientDetails(patientId) {
+        const modalBody = $('#patient-details-modal .modal-body');
+        modalBody.html('<p class="text-center">Loading details...</p>');
+        $('#patient-details-modal').data('patient-id', patientId); // Store patient ID on the modal
+        $('#patient-details-modal').modal('show');
+
+        $.get(`${apiBaseUrl}/api/patient-details/${patientId}`, function(data) {
+            displayPatientDetails(data);
+        }).fail(() => {
+            modalBody.html('<p class="text-center text-danger">Could not load patient details.</p>');
+        });
+    }
+    
+    function displayPatientDetails(data) {
+        const { details, follow_ups, anc_details, pnc_details } = data;
+        
+        // Cache follow-ups data on the modal for later access
+        $('#patient-details-modal').data('follow-ups', follow_ups);
+        
+        $('#patientDetailsModalLabel').text(`Details for ${details.name}`);
+
+        let content = `
+            <h5>Patient Information</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Name:</strong> ${details.name}</p>
+                    <p><strong>Age:</strong> ${details.age || 'N/A'}</p>
+                    <p><strong>Sex:</strong> ${details.sex || 'N/A'}</p>
+                    <p><strong>Caste:</strong> ${details.caste || 'N/A'}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Husband/Father:</strong> ${details.husband_father_name || 'N/A'}</p>
+                    <p><strong>Village:</strong> ${details.village_name || 'N/A'}</p>
+                    <p><strong>Program:</strong> ${details.program_type || 'N/A'}</p>
+                    <p><strong>BPL Status:</strong> ${details.bpl_status || 'No'}</p>
+                </div>
+            </div>
+            <hr>`;
+
+        if (details.program_type === 'ANC' && anc_details) {
+            content += `
+                <h5>ANC Program Details</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>GPAL:</strong> ${anc_details.gpal || 'N/A'}</p>
+                        <p><strong>Albumin:</strong> ${anc_details.albumin || 'N/A'}</p>
+                        <p><strong>TT:</strong> ${anc_details.tt || 'N/A'}</p>
+                        <p><strong>FHR:</strong> ${anc_details.fhr || 'N/A'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Gestational Age:</strong> ${anc_details.gestational_age || 'N/A'}</p>
+                        <p><strong>FP:</strong> ${anc_details.fp || 'N/A'}</p>
+                        <p><strong>Contact:</strong> ${anc_details.contact || 'N/A'}</p>
+                        <p><strong>Remark:</strong> ${anc_details.remark || 'N/A'}</p>
+                    </div>
+                </div>
+                <hr>`;
+        }
+
+        if (details.program_type === 'PNC' && pnc_details) {
+            content += `
+                <h5>PNC Program Details</h5>
+                <div class="row">
+                    <div class="col-md-4"><p><strong>PNC Duration:</strong> ${pnc_details.pnc_duration || 'N/A'}</p></div>
+                    <div class="col-md-4"><p><strong>Mother Weight:</strong> ${pnc_details.mother_weight || 'N/A'} Kg</p></div>
+                    <div class="col-md-4"><p><strong>Child Weight:</strong> ${pnc_details.child_weight || 'N/A'} Kg</p></div>
+                </div>
+                <hr>`;
+        }
+        
+        content += `<h5>Follow-up History</h5>`;
+        if (follow_ups.length > 0) {
+            content += `<div class="table-responsive" style="max-height: 300px;">
+                <table class="table table-sm table-bordered">
+                    <thead class="thead-light"><tr><th>Date</th><th>BP</th><th>Complaint</th><th>Medicine</th><th>Actions</th></tr></thead>
+                    <tbody>`;
+            follow_ups.forEach(fu => {
+                content += `<tr data-follow-up-id="${fu.id}">
+                    <td>${new Date(fu.follow_up_date).toLocaleDateString()}</td>
+                    <td>${fu.blood_pressure || 'N/A'}</td>
+                    <td>${fu.complaint_of || 'N/A'}</td>
+                    <td>${fu.medicine_prescribed || 'N/A'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary view-follow-up-btn mr-1" title="View Full Record"><i class="fas fa-eye"></i></button>
+                        <button class="btn btn-sm btn-info edit-follow-up-btn" title="Edit Record"><i class="fas fa-edit"></i></button>
+                    </td>
+                </tr>`;
+            });
+            content += `</tbody></table></div>`;
+        } else {
+            content += '<p>No follow-up records found.</p>';
+        }
+
+        $('#patient-details-modal .modal-body').html(content);
+    }
+    
+    // --- Edit and Delete Patient Logic ---
+    $('#records-table-container').on('click', '.edit-patient-btn', function() {
+        const patientId = $(this).closest('tr').data('patient-id');
+        openEditModal(patientId);
+    });
+
+    function openEditModal(patientId) {
+        $.get(`${apiBaseUrl}/api/patient-details/${patientId}`, function(data) {
+            const { details, anc_details, pnc_details } = data;
+            $('#edit-patient-id').val(details.id);
+            $('#edit-registration-date').val(details.registration_date);
+            $('#edit-name').val(details.name);
+            $('#edit-husband-father-name').val(details.husband_father_name);
+            $('#edit-age').val(details.age);
+            $('#edit-sex').val(details.sex);
+            $('#edit-caste').val(details.caste);
+            $('#edit-bpl-status').val(details.bpl_status);
+            $('#edit-village-name').val(details.village_name);
+            $('#edit-program-type').val(details.program_type).trigger('change'); 
+
+            if (details.program_type === 'ANC' && anc_details) {
+                $('#edit-anc-gpal').val(anc_details.gpal);
+                $('#edit-anc-albumin').val(anc_details.albumin);
+                $('#edit-anc-tt').val(anc_details.tt);
+                $('#edit-anc-fhr').val(anc_details.fhr);
+                $('#edit-anc-gestational-age').val(anc_details.gestational_age);
+                $('#edit-anc-fp').val(anc_details.fp);
+                $('#edit-anc-contact').val(anc_details.contact);
+                $('#edit-anc-remark').val(anc_details.remark);
+            }
+            
+            if (details.program_type === 'PNC' && pnc_details) {
+                $('#edit-pnc-duration').val(pnc_details.pnc_duration);
+                $('#edit-pnc-mother-weight').val(pnc_details.mother_weight);
+                $('#edit-pnc-child-weight').val(pnc_details.child_weight);
+            }
+
+            $('#edit-patient-modal').modal('show');
+        });
+    }
+    
+    $('#edit-program-type').on('change', function() {
+        const selectedProgram = $(this).val();
+        $('#edit-anc-details-container').addClass('d-none');
+        $('#edit-pnc-details-container').addClass('d-none');
+
+        if (selectedProgram === 'ANC') {
+            $('#edit-anc-details-container').removeClass('d-none');
+        } else if (selectedProgram === 'PNC') {
+            $('#edit-pnc-details-container').removeClass('d-none');
+        }
+    });
+
+
+    $('#edit-patient-form').on('submit', function(e) {
+        e.preventDefault();
+        const patientId = $('#edit-patient-id').val();
+        const programType = $('#edit-program-type').val();
+
+        const updatedData = {
+            registration_date: $('#edit-registration-date').val(),
+            name: $('#edit-name').val(),
+            husband_father_name: $('#edit-husband-father-name').val(),
+            age: $('#edit-age').val(),
+            sex: $('#edit-sex').val(),
+            caste: $('#edit-caste').val(),
+            bpl_status: $('#edit-bpl-status').val(),
+            village_name: $('#edit-village-name').val(),
+            program_type: programType
+        };
+
+        if (programType === 'ANC') {
+            updatedData.anc_details = {
+                gpal: $('#edit-anc-gpal').val(), albumin: $('#edit-anc-albumin').val(), tt: $('#edit-anc-tt').val(), fhr: $('#edit-anc-fhr').val(),
+                gestational_age: $('#edit-anc-gestational-age').val(), fp: $('#edit-anc-fp').val(), contact: $('#edit-anc-contact').val(), remark: $('#edit-anc-remark').val()
+            };
+        } else if (programType === 'PNC') {
+            updatedData.pnc_details = {
+                pnc_duration: $('#edit-pnc-duration').val(), mother_weight: $('#edit-pnc-mother-weight').val(), child_weight: $('#edit-pnc-child-weight').val()
+            };
+        }
+
+
+        $.ajax({
+            url: `${apiBaseUrl}/api/patients/${patientId}`,
+            type: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(updatedData),
+            success: function() {
+                alert('Patient details updated successfully!');
+                $('#edit-patient-modal').modal('hide');
+                fetchPatientRecords(); 
+            },
+            error: function() {
+                alert('Error: Could not update patient details.');
+            }
         });
     });
     
+    $('#records-table-container').on('click', '.delete-patient-btn', function() {
+        const patientId = $(this).closest('tr').data('patient-id');
+        const patientName = $(this).closest('tr').find('.patient-details-link').text();
+        if (confirm(`Are you sure you want to delete ${patientName}? This action cannot be undone.`)) {
+            $.ajax({
+                url: `${apiBaseUrl}/api/patients/${patientId}`,
+                type: 'DELETE',
+                success: function() {
+                    alert('Patient deleted successfully.');
+                    fetchPatientRecords(); 
+                },
+                error: function() {
+                    alert('Error: Could not delete patient.');
+                }
+            });
+        }
+    });
+    
+    // --- View/Edit Follow-up ---
+    $('#patient-details-modal').on('click', '.edit-follow-up-btn', function() {
+        const followUpId = $(this).closest('tr').data('follow-up-id');
+        const patientId = $('#patient-details-modal').data('patient-id');
+        openEditFollowUpModal(followUpId, patientId);
+    });
+
+    function openEditFollowUpModal(followUpId, patientId) {
+        $.get(`${apiBaseUrl}/api/followups/${followUpId}`, function(data) {
+            // Populate the modal form
+            $('#edit-fu-id').val(data.id);
+            $('#edit-fu-patient-id').val(patientId); // Store patientId for refresh
+            $('#edit-fu-date').val(data.follow_up_date);
+            $('#edit-fu-pulse').val(data.pulse);
+            $('#edit-fu-respiratory-rate').val(data.respiratory_rate);
+            $('#edit-fu-temperature').val(data.temperature);
+            $('#edit-fu-blood-pressure').val(data.blood_pressure);
+            $('#edit-fu-weight').val(data.weight_kg);
+            $('#edit-fu-height').val(data.height_cm);
+            $('#edit-fu-kco').val(data.known_case_of);
+            $('#edit-fu-ho').val(data.history_of);
+            $('#edit-fu-co').val(data.complaint_of);
+            $('#edit-fu-oe').val(data.on_examination);
+            $('#edit-fu-treatment').val(data.treatment_advised);
+            //$('#edit-fu-medicine').val(data.medicine_prescribed);
+            renderPrescriptionList(data.medicine_prescribed, '#edit-fu-prescription-list', '#edit-fu-medicine');
+            $('#edit-fu-follow-up-notes').val(data.follow_up_notes);
+            $('#edit-fu-lmp').val(data.last_menstrual_period);
+            $('#edit-fu-edd').val(data.expected_delivery_date);
+            $('#edit-fu-heartbeat').val(data.heartbeat);
+            $('#edit-fu-rbs').val(data.random_blood_sugar);
+            $('#edit-fu-hb').val(data.haemoglobin);
+            $('#edit-fu-urine-sugar').val(data.urine_sugar);
+            $('#edit-fu-urine-albumin').val(data.urine_albumin);
+    
+            $('#edit-follow-up-modal').modal('show');
+        }).fail(function() {
+            alert('Error: Could not retrieve follow-up details.');
+        });
+    }
+    
+    $('#edit-follow-up-form').on('submit', function(e) {
+        e.preventDefault();
+        const followUpId = $('#edit-fu-id').val();
+        const patientId = $('#edit-fu-patient-id').val();
+    
+        const updatedFollowUpData = {
+            follow_up_date: $('#edit-fu-date').val(),
+            pulse: $('#edit-fu-pulse').val() || null,
+            respiratory_rate: $('#edit-fu-respiratory-rate').val() || null,
+            temperature: $('#edit-fu-temperature').val() || null,
+            blood_pressure: $('#edit-fu-blood_pressure').val() || null,
+            weight_kg: $('#edit-fu-weight').val() || null,
+            height_cm: $('#edit-fu-height').val() || null,
+            known_case_of: $('#edit-fu-kco').val() || null,
+            history_of: $('#edit-fu-ho').val() || null,
+            complaint_of: $('#edit-fu-co').val() || null,
+            on_examination: $('#edit-fu-oe').val() || null,
+            treatment_advised: $('#edit-fu-treatment').val() || null,
+            medicine_prescribed: $('#edit-fu-medicine').val() || null,
+            follow_up_notes: $('#edit-fu-follow-up-notes').val() || null,
+            last_menstrual_period: $('#edit-fu-lmp').val() || null,
+            expected_delivery_date: $('#edit-fu-edd').val() || null,
+            heartbeat: $('#edit-fu-heartbeat').val() || null,
+            random_blood_sugar: $('#edit-fu-rbs').val() || null,
+            haemoglobin: $('#edit-fu-hb').val() || null,
+            urine_sugar: $('#edit-fu-urine-sugar').val() || null,
+            urine_albumin: $('#edit-fu-urine-albumin').val() || null,
+        };
+    
+        $.ajax({
+            url: `${apiBaseUrl}/api/followups/${followUpId}`,
+            type: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(updatedFollowUpData),
+            success: function() {
+                $('#edit-follow-up-modal').modal('hide');
+                alert('Follow-up details updated successfully!');
+                fetchAndShowPatientDetails(patientId);
+                fetchMedicines();
+            },
+            error: function(xhr) {
+                alert('Error updating follow-up: ' + xhr.responseText);
+            }
+        });
+    });
+    
+    $('#patient-details-modal').on('click', '.view-follow-up-btn', function() {
+        const followUpId = $(this).closest('tr').data('follow-up-id');
+        const allFollowUps = $('#patient-details-modal').data('follow-ups');
+        const followUpData = allFollowUps.find(fu => fu.id === followUpId);
+
+        if (followUpData) {
+            displayFullFollowUpDetails(followUpData);
+        } else {
+            alert('Error: Could not retrieve follow-up details.');
+        }
+    });
+
+    function displayFullFollowUpDetails(data) {
+        const content = `
+            <p><strong>Follow-up Date:</strong> ${new Date(data.follow_up_date).toLocaleDateString()}</p>
+            <hr>
+            <h6>Vitals</h6>
+            <div class="row">
+                <div class="col-md-3"><p><strong>Pulse:</strong> ${data.pulse || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Respiratory Rate:</strong> ${data.respiratory_rate || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Temperature:</strong> ${data.temperature || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Blood Pressure:</strong> ${data.blood_pressure || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Weight (Kg):</strong> ${data.weight_kg || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Height (cm):</strong> ${data.height_cm || 'N/A'}</p></div>
+            </div>
+            <hr>
+            <h6>History & Notes</h6>
+            <div class="row">
+                <div class="col-md-6"><p><strong>Known Case Of (K/C/O):</strong><br>${data.known_case_of || 'N/A'}</p></div>
+                <div class="col-md-6"><p><strong>History Of (H/O):</strong><br>${data.history_of || 'N/A'}</p></div>
+                <div class="col-md-6"><p><strong>Complaint Of (C/O):</strong><br>${data.complaint_of || 'N/A'}</p></div>
+                <div class="col-md-6"><p><strong>On Examination (O/E):</strong><br>${data.on_examination || 'N/A'}</p></div>
+                <div class="col-md-6"><p><strong>Treatment Advised:</strong><br>${data.treatment_advised || 'N/A'}</p></div>
+                <div class="col-md-6"><p><strong>Medicine Prescribed:</strong><br>${data.medicine_prescribed || 'N/A'}</p></div>
+                <div class="col-md-12"><p><strong>Follow-up Notes:</strong><br>${data.follow_up_notes || 'N/A'}</p></div>
+            </div>
+            <hr>
+            <h6>ANC / PNC / Child</h6>
+            <div class="row">
+                <div class="col-md-3"><p><strong>LMP:</strong> ${data.last_menstrual_period ? new Date(data.last_menstrual_period).toLocaleDateString() : 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>EDD:</strong> ${data.expected_delivery_date ? new Date(data.expected_delivery_date).toLocaleDateString() : 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Heartbeat:</strong> ${data.heartbeat || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>RBS:</strong> ${data.random_blood_sugar || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Hb:</strong> ${data.haemoglobin || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Urine Sugar:</strong> ${data.urine_sugar || 'N/A'}</p></div>
+                <div class="col-md-3"><p><strong>Urine Albumin:</strong> ${data.urine_albumin || 'N/A'}</p></div>
+            </div>
+        `;
+        
+        $('#followUpDetailsModalLabel').text(`Follow-up Details for ${new Date(data.follow_up_date).toLocaleDateString()}`);
+        $('#full-follow-up-details-content').html(content);
+        $('#follow-up-details-modal').modal('show');
+    }
+
+
+    $('#export-records-btn').on('click', function() {
+        const searchTerm = $('#records-search-input').val();
+        const startDate = $('#records-start-date').val();
+        const endDate = $('#records-end-date').val();
+        const params = new URLSearchParams();
+        if (searchTerm) params.append('searchTerm', searchTerm);
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        
+        window.location.href = `${apiBaseUrl}/api/patient-records/export?${params.toString()}`;
+    });
+
+    $('#export-records-details-btn').on('click', function() {
+        window.location.href = `${apiBaseUrl}/api/patient-records/export-details`;
+    });
+
     // --- Populating Patient Dropdowns ---
     function populateAllPatientDropdowns() {
         $.get(`${apiBaseUrl}/api/patients/list`, function(patients) {
@@ -73,6 +555,93 @@ $(document).ready(function() {
         });
     }
 
+    function populateMedicineDropdowns() {
+        $.get(`${apiBaseUrl}/api/medicines`, function(medicines) {
+            const addSelect = $('#fu-medicine-select');
+            const editSelect = $('#edit-fu-medicine-select');
+            addSelect.html('<option value="">-- Select Medicine --</option>');
+            editSelect.html('<option value="">-- Select Medicine --</option>');
+            medicines.forEach(med => {
+                const remaining = med.stock_count - (med.issued_quantity || 0);
+                if (remaining > 0) {
+                    const option = `<option value="${med.name}">${med.name} (Rem: ${remaining})</option>`;
+                    addSelect.append(option);
+                    editSelect.append(option);
+                }
+            });
+        });
+    }
+
+    // --- Prescription Management Logic ---
+    function updatePrescription(listSelector, inputSelector) {
+        const items = $(listSelector).find('li').map(function() {
+            return $(this).data('prescription');
+        }).get();
+        $(inputSelector).val(items.join(', '));
+    }
+
+    function renderPrescriptionList(medString, listSelector, inputSelector) {
+        const list = $(listSelector);
+        list.empty();
+        $(inputSelector).val(medString || '');
+        if (!medString) return;
+
+        const meds = medString.split(',').map(m => m.trim()).filter(m => m);
+        const regex = /(.+?)\s*\((\d+)\)/;
+
+        meds.forEach(medText => {
+            const match = medText.match(regex);
+            if(match) {
+                 const name = match[1].trim();
+                 const qty = match[2];
+                 const prescription = `${name} (${qty})`;
+                 list.append(`<li class="list-group-item list-group-item-sm py-1" data-prescription="${prescription}">${prescription} <button type="button" class="close remove-prescription-item">&times;</button></li>`);
+            }
+        });
+    }
+
+    $('#add-medicine-to-fu-btn').on('click', function() {
+        addMedicineToPrescription(
+            '#fu-medicine-select', 
+            '#fu-medicine-quantity', 
+            '#fu-prescription-list', 
+            '#fu-medicine'
+        );
+    });
+
+    $('#add-medicine-to-edit-fu-btn').on('click', function() {
+        addMedicineToPrescription(
+            '#edit-fu-medicine-select', 
+            '#edit-fu-medicine-quantity', 
+            '#edit-fu-prescription-list', 
+            '#edit-fu-medicine'
+        );
+    });
+
+    function addMedicineToPrescription(selectId, qtyId, listId, inputId) {
+        const medName = $(selectId).val();
+        const medQty = $(qtyId).val();
+        if (!medName || !medQty || parseInt(medQty) <= 0) {
+            alert('Please select a medicine and enter a valid quantity.');
+            return;
+        }
+        const prescription = `${medName} (${medQty})`;
+        $(listId).append(`<li class="list-group-item list-group-item-sm py-1" data-prescription="${prescription}">${prescription} <button type="button" class="close remove-prescription-item">&times;</button></li>`);
+        updatePrescription(listId, inputId);
+
+        $(qtyId).val('');
+        $(selectId).val('');
+    }
+    
+    $('body').on('click', '.remove-prescription-item', function() {
+        const listItem = $(this).closest('li');
+        const list = listItem.parent();
+        const inputId = '#' + list.attr('id').replace('-list', '');
+        listItem.remove();
+        updatePrescription('#' + list.attr('id'), inputId);
+    });
+
+
     // --- Reporting Logic ---
     function populateVillageFilter() {
         $.get(`${apiBaseUrl}/api/villages`, function(villages) {
@@ -86,7 +655,7 @@ $(document).ready(function() {
 
     function populateProgramAndCasteFilters() {
         const programs = ['General', 'HTN', 'DM', 'ANC', 'PNC', 'CATARACT'];
-        const castes = ['General', 'SC/ST', 'Others'];
+        const castes = ['General', 'OBC', 'SC/ST', 'Others'];
         const progContainer = $('#filter-program-checkboxes');
         const casteContainer = $('#filter-caste-checkboxes');
         progContainer.empty();
@@ -111,10 +680,14 @@ $(document).ready(function() {
         Object.keys(params).forEach(key => { if(params[key]) reportUrl.searchParams.set(key, params[key]) });
         $('#report-table-container').html('<p class="text-muted text-center">Loading...</p>');
         $('#export-excel-btn').prop('disabled', true);
+        
         $.get(reportUrl.toString(), function(response) {
-            $('#report-count').text(response.count);
+            $('#total-visits-count').text(response.total_visits);
+            $('#unique-patient-count').text(response.unique_patients);
+            $('#follow-up-visits-count').text(response.follow_up_visits);
+
             renderReportTable(response.data);
-            if(response.count > 0) $('#export-excel-btn').prop('disabled', false);
+            if(response.total_visits > 0) $('#export-excel-btn').prop('disabled', false);
         }).fail(() => $('#report-table-container').html('<p class="text-danger text-center">Failed to load report.</p>'));
     });
 
@@ -122,10 +695,16 @@ $(document).ready(function() {
         const container = $('#report-table-container');
         if (data.length === 0) { container.html('<p class="text-muted text-center">No records found.</p>'); return; }
         const table = $('<table class="table table-hover table-sm"></table>');
-        table.html(`<thead class="thead-light"><tr><th>Date</th><th>Patient</th><th>Village</th><th>Program</th><th>Caste</th><th>BP</th><th>RBS</th></tr></thead><tbody></tbody>`);
+        table.html(`<thead class="thead-light"><tr><th>Visit Date</th><th>Patient</th><th>Village</th><th>Program</th><th>Visit Type</th></tr></thead><tbody></tbody>`);
         const tbody = table.find('tbody');
         data.forEach(row => {
-            tbody.append(`<tr><td>${new Date(row.follow_up_date).toLocaleDateString()}</td><td>${row.patient_name}</td><td>${row.village_name}</td><td>${row.program_type}</td><td>${row.caste}</td><td>${row.blood_pressure || 'N/A'}</td><td>${row.random_blood_sugar || 'N/A'}</td></tr>`);
+            tbody.append(`<tr>
+                <td>${new Date(row.visit_date).toLocaleDateString()}</td>
+                <td>${row.patient_name}</td>
+                <td>${row.village_name}</td>
+                <td>${row.program_type}</td>
+                <td><span class="badge badge-${row.visit_type === 'Follow-up' ? 'success' : 'primary'}">${row.visit_type}</span></td>
+            </tr>`);
         });
         container.html(table);
     }
@@ -188,13 +767,26 @@ $(document).ready(function() {
         const container = $('#medicine-table-container');
         if (medicines.length === 0) { container.html('<p class="text-muted text-center">No medicines in inventory.</p>'); return; }
         const table = $('<table class="table table-hover table-sm"></table>');
-        table.html(`<thead class="thead-light"><tr><th>Name</th><th>Stock</th><th>Expiry</th><th>Actions</th></tr></thead><tbody></tbody>`);
+        table.html(`<thead class="thead-light"><tr><th>Name</th><th>Total Stock</th><th>Issued</th><th>Remaining</th><th>Expiry</th><th>Actions</th></tr></thead><tbody></tbody>`);
         const tbody = table.find('tbody');
         const today = new Date(); today.setHours(0, 0, 0, 0);
         medicines.forEach(med => {
             const expiryDate = new Date(med.expiration_date);
-            let rowClass = (expiryDate < today) ? 'table-danger' : (med.stock_count <= 10 ? 'table-warning' : '');
-            tbody.append(`<tr class="${rowClass}" data-id="${med.id}" data-name="${med.name}" data-stock="${med.stock_count}"><td>${med.name}</td><td>${med.stock_count}</td><td>${med.expiration_date}</td><td><button class="btn btn-sm btn-info update-stock-btn" title="Update"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger delete-med-btn" title="Delete"><i class="fas fa-trash"></i></button></td></tr>`);
+            const issued = med.issued_quantity || 0;
+            const remaining = med.stock_count - issued;
+            let rowClass = (expiryDate < today) ? 'table-danger' : (remaining <= 10 ? 'table-warning' : '');
+            tbody.append(`<tr class="${rowClass}" data-id="${med.id}" data-name="${med.name}" data-stock="${med.stock_count}" data-issued="${issued}">
+                <td>${med.name}</td>
+                <td>${med.stock_count}</td>
+                <td>${issued}</td>
+                <td>${remaining}</td>
+                <td>${med.expiration_date}</td>
+                <td>
+                    <button class="btn btn-sm btn-success issue-med-btn" title="Issue Medicine"><i class="fas fa-arrow-circle-down"></i></button>
+                    <button class="btn btn-sm btn-info update-stock-btn" title="Update Total Stock"><i class="fas fa-edit"></i></button> 
+                    <button class="btn btn-sm btn-danger delete-med-btn" title="Delete"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>`);
         });
         container.html(table);
     }
@@ -231,51 +823,51 @@ $(document).ready(function() {
         }
     });
 
-    // --- Patient Records Page Logic ---
-    function fetchPatientRecords() {
-        $('#records-table-container').html('<p class="text-muted text-center">Loading records...</p>');
-        $.get(`${apiBaseUrl}/api/patient-records`, function(records) {
-            renderRecordsTable(records);
-        }).fail(() => {
-            $('#records-table-container').html('<p class="text-danger text-center">Failed to load patient records.</p>');
-        });
-    }
+    $('#medicine-table-container').on('click', '.issue-med-btn', function() {
+        const tr = $(this).closest('tr');
+        const medId = tr.data('id');
+        const medName = tr.data('name');
+        const totalStock = tr.data('stock');
+        const issuedQty = tr.data('issued');
+        const remainingQty = totalStock - issuedQty;
 
-    function renderRecordsTable(records) {
-        const container = $('#records-table-container');
-        if (records.length === 0) {
-            container.html('<p class="text-muted text-center">No patients have been registered yet.</p>');
+        $('#issue-med-id').val(medId);
+        $('#issue-med-name').val(medName);
+        $('#issue-med-remaining').val(remainingQty);
+        $('#issue-med-quantity').val('').attr('max', remainingQty);
+        $('#issue-medicine-modal').modal('show');
+    });
+
+    $('#issue-medicine-form').on('submit', function(e) {
+        e.preventDefault();
+        const medId = $('#issue-med-id').val();
+        const quantity = parseInt($('#issue-med-quantity').val(), 10);
+        const remaining = parseInt($('#issue-med-remaining').val(), 10);
+
+        if (isNaN(quantity) || quantity <= 0) {
+            alert('Please enter a valid quantity.');
             return;
         }
-        const table = $('<table class="table table-hover table-sm"></table>');
-        table.html(`
-            <thead class="thead-light">
-                <tr>
-                    <th>Patient Name</th>
-                    <th>Village</th>
-                    <th>Registration Date</th>
-                    <th>Last Follow-up Date</th>
-                </tr>
-            </thead>
-            <tbody></tbody>`);
-        const tbody = table.find('tbody');
-        records.forEach(row => {
-            tbody.append(`
-                <tr>
-                    <td>${row.name}</td>
-                    <td>${row.village_name || 'N/A'}</td>
-                    <td>${row.registration_date}</td>
-                    <td>${row.last_follow_up || 'None'}</td>
-                </tr>
-            `);
-        });
-        container.html(table);
-    }
+        if (quantity > remaining) {
+            alert('Issue quantity cannot be greater than remaining stock.');
+            return;
+        }
 
-    $('#export-records-btn').on('click', function() {
-        window.location.href = `${apiBaseUrl}/api/patient-records/export`;
+        $.ajax({
+            url: `${apiBaseUrl}/api/medicines/issue/${medId}`,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ quantity: quantity }),
+            success: function() {
+                $('#issue-medicine-modal').modal('hide');
+                fetchMedicines();
+            },
+            error: function(xhr) {
+                alert('Error issuing medicine: ' + xhr.responseText);
+            }
+        });
     });
-    
+
     // --- Demographics Page Logic ---
     function fetchDemographicsReport() {
         $('#demographics-table-container').html('<p class="text-muted text-center">Loading report...</p>');
@@ -326,21 +918,42 @@ $(document).ready(function() {
     // --- Lab Page Logic ---
     function fetchLabRecords() {
         $('#lab-table-container').html('<p class="text-muted text-center">Loading lab records...</p>');
-        $.get(`${apiBaseUrl}/api/lab-records`, function(records) {
+        const params = {
+            startDate: $('#lab-filter-start-date').val(),
+            endDate: $('#lab-filter-end-date').val()
+        };
+
+        $.get(`${apiBaseUrl}/api/lab-records`, params, function(records) {
             renderLabTable(records);
         }).fail(() => {
             $('#lab-table-container').html('<p class="text-danger text-center">Failed to load lab records.</p>');
         });
     }
 
+    $('#lab-filter-btn').on('click', fetchLabRecords);
+
+
     function renderLabTable(records) {
         const container = $('#lab-table-container');
         if (records.length === 0) { container.html('<p class="text-muted text-center">No lab records found.</p>'); return; }
         const table = $('<table class="table table-hover table-sm"></table>');
-        table.html(`<thead class="thead-light"><tr><th>Date</th><th>Patient</th><th>Father/Husband</th><th>Sex</th><th>Test</th><th>Positive</th><th>Negative</th></tr></thead><tbody></tbody>`);
+        table.html(`<thead class="thead-light"><tr><th>Date</th><th>Patient</th><th>Father/Husband</th><th>Sex</th><th>Test</th><th>Positive</th><th>Negative</th><th>Actions</th></tr></thead><tbody></tbody>`);
         const tbody = table.find('tbody');
         records.forEach(row => {
-            tbody.append(`<tr><td>${row.test_date}</td><td>${row.patient_name}</td><td>${row.husband_father_name || ''}</td><td>${row.sex || ''}</td><td>${row.test_name}</td><td>${row.result_positive_reading || ''}</td><td>${row.result_negative_reading || ''}</td></tr>`);
+            tbody.append(`
+                <tr data-record-id="${row.id}">
+                    <td>${row.test_date}</td>
+                    <td>${row.patient_name}</td>
+                    <td>${row.husband_father_name || ''}</td>
+                    <td>${row.sex || ''}</td>
+                    <td>${row.test_name}</td>
+                    <td>${row.result_positive_reading || ''}</td>
+                    <td>${row.result_negative_reading || ''}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info edit-lab-btn" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-danger delete-lab-btn" title="Delete"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>`);
         });
         container.html(table);
     }
@@ -381,9 +994,116 @@ $(document).ready(function() {
             error: () => alert('Error saving lab record.')
         });
     });
+
+    $('#lab-table-container').on('click', '.edit-lab-btn', function() {
+        const recordId = $(this).closest('tr').data('record-id');
+        $.get(`${apiBaseUrl}/api/lab-records/${recordId}`, function(record) {
+            $('#edit-lab-record-id').val(record.id);
+            $('#edit-lab-test-date').val(record.test_date);
+            $('#edit-lab-test-name').val(record.test_name);
+            $('#edit-lab-positive-reading').val(record.result_positive_reading);
+            $('#edit-lab-negative-reading').val(record.result_negative_reading);
+            $('#edit-lab-record-modal').modal('show');
+        });
+    });
+
+    $('#edit-lab-record-form').on('submit', function(e) {
+        e.preventDefault();
+        const recordId = $('#edit-lab-record-id').val();
+        const updatedData = {
+            test_date: $('#edit-lab-test-date').val(),
+            test_name: $('#edit-lab-test-name').val(),
+            result_positive_reading: $('#edit-lab-positive-reading').val(),
+            result_negative_reading: $('#edit-lab-negative-reading').val()
+        };
+
+        $.ajax({
+            url: `${apiBaseUrl}/api/lab-records/${recordId}`,
+            type: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(updatedData),
+            success: function() {
+                $('#edit-lab-record-modal').modal('hide');
+                fetchLabRecords();
+            },
+            error: function() {
+                alert('Error updating lab record.');
+            }
+        });
+    });
+
+    $('#lab-table-container').on('click', '.delete-lab-btn', function() {
+        const recordId = $(this).closest('tr').data('record-id');
+        if (confirm('Are you sure you want to delete this lab record?')) {
+            $.ajax({
+                url: `${apiBaseUrl}/api/lab-records/${recordId}`,
+                type: 'DELETE',
+                success: function() {
+                    fetchLabRecords();
+                },
+                error: function() {
+                    alert('Error deleting lab record.');
+                }
+            });
+        }
+    });
     
     $('#export-lab-btn').on('click', function() {
         window.location.href = `${apiBaseUrl}/api/lab-records/export`;
+    });
+
+    $('#generate-lab-count-btn').on('click', function() {
+        const countUrl = new URL(`${apiBaseUrl}/api/lab-report-count`);
+        const params = {
+            startDate: $('#lab-count-start-date').val(),
+            endDate: $('#lab-count-end-date').val()
+        };
+        if (params.startDate && params.endDate) {
+            countUrl.searchParams.set('startDate', params.startDate);
+            countUrl.searchParams.set('endDate', params.endDate);
+        }
+        
+        $('#lab-count-table-container').html('<p class="text-muted text-center">Generating report...</p>');
+        $('#export-lab-count-btn').prop('disabled', true);
+        
+        $.get(countUrl.toString(), function(data) {
+            renderLabCountTable(data);
+            if (data.length > 0) {
+                $('#export-lab-count-btn').prop('disabled', false);
+            }
+        }).fail(() => $('#lab-count-table-container').html('<p class="text-danger text-center">Failed to generate report.</p>'));
+    });
+
+    function renderLabCountTable(data) {
+        const container = $('#lab-count-table-container');
+        if (data.length === 0) { container.html('<p class="text-muted text-center">No data for this period.</p>'); return; }
+        const table = $('<table class="table table-hover table-sm"></table>');
+        table.html(`<thead class="thead-light"><tr><th>Test Name</th><th>Total Tests</th><th>Positive</th><th>Negative</th><th>Abnormal</th><th>Normal</th></tr></thead><tbody></tbody>`);
+        const tbody = table.find('tbody');
+        data.forEach(row => {
+            tbody.append(`<tr>
+                <td>${row.test_name}</td>
+                <td>${row.total_tests}</td>
+                <td>${row.positive}</td>
+                <td>${row.negative}</td>
+                <td>${row.abnormal}</td>
+                <td>${row.normal}</td>
+            </tr>`);
+        });
+        container.html(table);
+    }
+
+    $('#export-lab-count-btn').on('click', function() {
+        const exportUrl = new URL(`${apiBaseUrl}/api/lab-report-count/export`);
+        const params = {
+            startDate: $('#lab-count-start-date').val(),
+            endDate: $('#lab-count-end-date').val()
+        };
+        if (params.startDate && params.endDate) {
+            exportUrl.searchParams.set('startDate', params.startDate);
+            exportUrl.searchParams.set('endDate', params.endDate);
+        }
+        window.location.href = exportUrl.toString();
     });
 
     // --- Logbook Page Logic ---
@@ -400,10 +1120,10 @@ $(document).ready(function() {
         const container = $('#logbook-table-container');
         if (entries.length === 0) { container.html('<p class="text-muted text-center">No logbook entries found.</p>'); return; }
         const table = $('<table class="table table-hover table-sm"></table>');
-        table.html(`<thead class="thead-light"><tr><th>Date</th><th>Time In</th><th>Time Out</th><th>Opening KMs</th><th>Closing KMs</th><th>Total KMs</th><th>Fuel (L)</th><th>Villages</th></tr></thead><tbody></tbody>`);
+        table.html(`<thead class="thead-light"><tr><th>Date</th><th>Time Out</th><th>Time In</th><th>Opening KMs</th><th>Closing KMs</th><th>Total KMs</th><th>Fuel (L)</th><th>Villages</th></tr></thead><tbody></tbody>`);
         const tbody = table.find('tbody');
         entries.forEach(row => {
-            tbody.append(`<tr><td>${row.entry_date}</td><td>${row.time_in || ''}</td><td>${row.time_out || ''}</td><td>${row.kms_opening || ''}</td><td>${row.kms_closing || ''}</td><td>${row.total_kms || ''}</td><td>${row.fuel_quantity || ''}</td><td>${row.villages_visited || ''}</td></tr>`);
+            tbody.append(`<tr><td>${row.entry_date}</td><td>${row.time_out || ''}</td><td>${row.time_in || ''}</td><td>${row.kms_opening || ''}</td><td>${row.kms_closing || ''}</td><td>${row.total_kms || ''}</td><td>${row.fuel_quantity || ''}</td><td>${row.villages_visited || ''}</td></tr>`);
         });
         container.html(table);
     }
@@ -525,13 +1245,47 @@ $(document).ready(function() {
         window.location.href = `${apiBaseUrl}/api/cumulative-report/export?year=${year}`;
     });
 
+    // --- Activity Log Page Logic ---
+    function fetchActivityLog() {
+        $('#activity-log-table-container').html('<p class="text-muted text-center">Loading log...</p>');
+        $.get(`${apiBaseUrl}/api/activity-log`, function(logs) {
+            renderActivityLogTable(logs);
+        }).fail(() => {
+            $('#activity-log-table-container').html('<p class="text-danger text-center">Failed to load activity log.</p>');
+        });
+    }
+
+    function renderActivityLogTable(logs) {
+        const container = $('#activity-log-table-container');
+        if (logs.length === 0) {
+            container.html('<p class="text-muted text-center">No activities recorded yet.</p>');
+            return;
+        }
+        const table = $('<table class="table table-hover table-sm"></table>');
+        table.html(`<thead class="thead-light"><tr><th style="width: 20%;">Timestamp</th><th style="width: 20%;">Action</th><th>Details</th></tr></thead><tbody></tbody>`);
+        const tbody = table.find('tbody');
+        logs.forEach(log => {
+            tbody.append(`
+                <tr>
+                    <td>${log.timestamp}</td>
+                    <td><span class="badge badge-info">${log.action}</span></td>
+                    <td>${log.details}</td>
+                </tr>
+            `);
+        });
+        container.html(table);
+    }
+
+    $('#refresh-log-btn').on('click', fetchActivityLog);
+
+
     // --- Initial Page Load ---
     populateVillageFilter();
     populateProgramAndCasteFilters();
     populateAllPatientDropdowns();
-    fetchMedicines();
+    populateMedicineDropdowns();
     populateYearSelect();
     
-    // Set the default page to dashboard and load its data
+    // Set the default page to dashboard and load stats
     $('#nav-dashboard').trigger('click');
 });
